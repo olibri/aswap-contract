@@ -5,4 +5,20 @@ target
 node_modules
 test-ledger
 .yarn
+
+# Environment files with sensitive data
 .env
+.env.*
+utils/.env
+utils/.env.*
+*.env
+*_secret*
+*private*
+
+# IDE files
+.vscode/
+.idea/
+
+# Build artifacts
+dist/
+build/
