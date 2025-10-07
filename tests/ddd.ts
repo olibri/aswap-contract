@@ -30,7 +30,7 @@ describe.only("🧪 Universal Orders: basic create", () => {
     let cryptoGuyTokenAccount: PublicKey;
     let fiatGuyTokenAccount: PublicKey;
     let adminTokenAccount: PublicKey; 
-    const adminSigner = TEST_WALLETS.buyer; // centralized from utils/env
+    const adminSigner = TEST_WALLETS.buyer; 
 
     const DECIMALS = 6;
     const TEN_TOKENS = TEST_TOKEN_AMOUNT_10;

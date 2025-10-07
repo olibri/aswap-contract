@@ -13,8 +13,11 @@ pub fn close_order(ctx: Context<CloseOrder>) -> Result<()> {
     let closer = &ctx.accounts.closer;
     let order = &ctx.accounts.order;
 
-    // Only creator or admin (optional) can close; for now, creator or anyone provided they are the payer of the close
-    require!(closer.key() == order.creator, UniversalOrderError::Unauthorized);
+    // Only creator or admin can close (admin pays rent, so should be able to reclaim it)
+    require!(
+        closer.key() == order.creator || closer.key() == crate::constants::ADMIN_PUBKEY, 
+        UniversalOrderError::Unauthorized
+    );
 
     // No active reservations
     require!(order.reserved_amount == 0, UniversalOrderError::CannotCancel);
@@ -97,7 +100,7 @@ pub fn close_order(ctx: Context<CloseOrder>) -> Result<()> {
 
 #[derive(Accounts)]
 pub struct CloseOrder<'info> {
-    /// The creator who closes the order
+    /// The creator or admin who closes the order
     #[account(mut)]
     pub closer: Signer<'info>,
 
