@@ -1,27 +1,29 @@
 use anchor_lang::prelude::*;
 
 /// Universal Order Events for blockchain parsing
+
+/// Emitted when an offer is accepted and crypto is locked (replaces UniversalOrderCreated + TicketAccepted)
 #[event]
-pub struct UniversalOrderCreated {
+pub struct OfferAccepted {
+    // Order info
     pub order: Pubkey,
-    pub creator: Pubkey,
+    pub order_id: u64,
+    pub creator: Pubkey,         // Who created the offer in DB
     pub crypto_mint: Pubkey,
+    pub vault: Pubkey,
     pub is_sell_order: bool,
     pub crypto_amount: u64,
     pub fiat_amount: u64,
-    pub order_id: u64,
-    pub vault: Pubkey,
-    pub timestamp: i64,
-}
-
-#[event]
-pub struct TicketAccepted {
-    pub order: Pubkey,
+    
+    // Ticket info
     pub ticket: Pubkey,
-    pub acceptor: Pubkey,
-    pub ticket_id: u64,
-    pub amount: u64,
-    pub is_sell_order: bool,
+    pub ticket_id: u64,          // Always 1 (first ticket)
+    pub locked_amount: u64,      // How much was locked
+    
+    // Parties
+    pub crypto_guy: Pubkey,      // Who locks tokens
+    pub fiat_guy: Pubkey,        // Who pays fiat
+    
     pub timestamp: i64,
 }
 

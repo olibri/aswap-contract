@@ -14,9 +14,6 @@ pub enum UniversalOrderError {
     #[msg("Unauthorized action")]
     Unauthorized,
     
-    #[msg("Invalid order status for this operation")]
-    InvalidOrderStatus,
-    
     #[msg("Race condition detected - operation already performed")]
     RaceCondition,
     

@@ -26,20 +26,8 @@ pub struct UniversalOrder {
     /// Unique order ID (timestamp or counter)
     pub order_id: u64,
     
-    /// Order status
-    pub status: OrderStatus,
-    
-    /// Has CryptoGuy signed? (confirmed crypto side)
-    pub crypto_guy_signed: bool,
-    
-    /// Has FiatGuy signed? (confirmed fiat payment)
-    pub fiat_guy_signed: bool,
-    
-    /// Partial fill support
+    /// Partial fill support: total amount filled and settled
     pub filled_amount: u64,
-    
-    /// Amount currently being filled (awaiting both signatures)
-    pub pending_amount: u64,
 
     /// Sum reserved by active tickets (parallel partial fills)
     pub reserved_amount: u64,
@@ -64,20 +52,6 @@ pub struct UniversalOrder {
     pub bump: u8,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
-pub enum OrderStatus {
-    /// Order created, waiting for acceptor
-    Created,
-    /// Someone accepted the order, crypto is locked
-    Accepted,
-    /// Both parties signed, ready for final settlement
-    BothSigned,
-    /// Order completed successfully
-    Completed,
-    /// Order cancelled
-    Cancelled,
-}
-
 impl UniversalOrder {
     /// Calculate space needed for the account
     pub const SPACE: usize = 8 + // discriminator
@@ -88,11 +62,7 @@ impl UniversalOrder {
         8 + // crypto_amount
         8 + // fiat_amount
         8 + // order_id
-        1 + // status (enum = 1 byte)
-        1 + // crypto_guy_signed
-        1 + // fiat_guy_signed
         8 + // filled_amount
-        8 + // pending_amount
         8 + // reserved_amount
         8 + // last_action_ts
         2 + // daily_fill_count
@@ -118,49 +88,6 @@ impl UniversalOrder {
         } else {
             self.creator // Buy order: creator is FiatGuy
         }
-    }
-    
-    /// Check if order can be cancelled by given user
-    pub fn can_cancel(&self, user: &Pubkey) -> bool {
-        match self.status {
-            OrderStatus::Created => {
-                // Only creator can cancel if no one accepted yet
-                *user == self.creator
-            },
-            OrderStatus::Accepted => {
-                // Both parties can cancel if other hasn't signed yet
-                *user == self.creator || self.acceptor.map(|acc| *user == acc).unwrap_or(false)
-            },
-            OrderStatus::BothSigned | OrderStatus::Completed | OrderStatus::Cancelled => {
-                // Cannot cancel once both signed or already finished
-                false
-            }
-        }
-    }
-    
-    /// Check if user can sign (confirm their part)
-    pub fn can_sign(&self, user: &Pubkey) -> bool {
-        if self.status != OrderStatus::Accepted {
-            return false;
-        }
-        
-        let crypto_guy = self.get_crypto_guy();
-        let fiat_guy = self.get_fiat_guy();
-        
-        if *user == crypto_guy && !self.crypto_guy_signed {
-            return true;
-        }
-        
-        if *user == fiat_guy && !self.fiat_guy_signed {
-            return true;
-        }
-        
-        false
-    }
-    
-    /// Check if both parties have signed
-    pub fn is_ready_for_settlement(&self) -> bool {
-        self.crypto_guy_signed && self.fiat_guy_signed && self.status == OrderStatus::Accepted
     }
     
     /// Get remaining amount that can be filled

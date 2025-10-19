@@ -4,6 +4,7 @@ use anchor_spl::token::{Token, TokenAccount, Transfer, transfer};
 use crate::universal::state::*;
 use crate::universal::errors::UniversalOrderError;
 use crate::universal::utils::fees::calculate_fee;
+use crate::universal::utils::auto_close::auto_close_if_needed;
 
 /// Sign a specific ticket; on both signatures, settle that ticket amount
 pub fn sign_ticket(
@@ -127,11 +128,25 @@ pub fn sign_ticket(
         });
 
         // Close the ticket account returning rent to admin (who paid for ticket creation)
-        let admin_info = ctx.accounts.admin_rent_receiver.to_account_info();
-        ticket.close(admin_info)?;
+        ticket.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
+
+        // AUTO-CLOSE order if fully completed
+        auto_close_if_needed(
+            &mut ctx.accounts.order,
+            &ctx.accounts.vault,
+            &ctx.accounts.admin_rent_receiver.to_account_info(),
+            &ctx.accounts.token_program.to_account_info(),
+            false, // is_refund = false (only close if completed)
+        )?;
+        
+        // Check if order was closed by auto_close
+        let order_closed = ctx.accounts.order.to_account_info().data_is_empty();
+        if order_closed {
+            return Ok(());
+        }
     }
 
-    // Finally, update order timestamp
+    // Finally, update order timestamp (if not auto-closed)
     {
         let order = &mut ctx.accounts.order;
         order.updated_at = clock.unix_timestamp;

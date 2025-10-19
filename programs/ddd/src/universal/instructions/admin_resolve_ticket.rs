@@ -4,6 +4,7 @@ use anchor_spl::token::{Token, TokenAccount, Transfer, transfer};
 use crate::universal::state::*;
 use crate::universal::errors::UniversalOrderError;
 use crate::universal::utils::fees::calculate_fee;
+use crate::universal::utils::auto_close::auto_close_if_needed;
 use crate::constants::ADMIN_PUBKEY;
 
 /// Admin resolve for a specific ticket: either settle to FiatGuy or refund to CryptoGuy
@@ -96,6 +97,15 @@ pub fn admin_resolve_ticket(
         // Return rent to admin (who paid for ticket creation)
         let admin_info = ctx.accounts.admin_rent_receiver.to_account_info();
         ticket.close(admin_info)?;
+
+        // AUTO-CLOSE: Check if order is fully completed (payout path)
+        auto_close_if_needed(
+            &mut ctx.accounts.order,
+            &ctx.accounts.vault,
+            &ctx.accounts.admin_rent_receiver.to_account_info(),
+            &ctx.accounts.token_program.to_account_info(),
+            false, // is_refund = false (only close if completed)
+        )?;
     } else {
         // Refund path
         if is_sell {
@@ -138,6 +148,15 @@ pub fn admin_resolve_ticket(
             // Close ticket and return rent to admin
             let admin_info = ctx.accounts.admin_rent_receiver.to_account_info();
             ticket.close(admin_info)?;
+
+            // AUTO-CLOSE: Refund means order is cancelled (always close)
+            auto_close_if_needed(
+                &mut ctx.accounts.order,
+                &ctx.accounts.vault,
+                &ctx.accounts.admin_rent_receiver.to_account_info(),
+                &ctx.accounts.token_program.to_account_info(),
+                true, // is_refund = true (always close)
+            )?;
         } else {
             // Buy order: refund to ticket.acceptor (CryptoGuy)
             let acceptor_ata = ctx.accounts.crypto_guy_token_account.as_ref()
@@ -176,6 +195,15 @@ pub fn admin_resolve_ticket(
             // Close ticket and return rent to admin
             let admin_info = ctx.accounts.admin_rent_receiver.to_account_info();
             ticket.close(admin_info)?;
+
+            // AUTO-CLOSE: Refund means order is cancelled (always close)
+            auto_close_if_needed(
+                &mut ctx.accounts.order,
+                &ctx.accounts.vault,
+                &ctx.accounts.admin_rent_receiver.to_account_info(),
+                &ctx.accounts.token_program.to_account_info(),
+                true, // is_refund = true (always close)
+            )?;
         }
     }
 
