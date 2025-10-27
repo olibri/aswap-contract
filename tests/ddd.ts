@@ -102,7 +102,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         } catch (e) {}
     });
 
-    it("✅ SELL: full flow with dual signature → auto-close", async () => {
+    it.only("✅ SELL: full flow with dual signature → auto-close", async () => {
         const orderId = new anchor.BN(Date.now());
         const ticketId = new anchor.BN(1);
         const cryptoAmount = usdc(10);
