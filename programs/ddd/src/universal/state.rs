@@ -72,23 +72,7 @@ impl UniversalOrder {
         32 + // vault
         1; // bump
 
-    /// Get who is the CryptoGuy in this order
-    pub fn get_crypto_guy(&self) -> Pubkey {
-        if self.is_sell_order {
-            self.creator // Sell order: creator is CryptoGuy
-        } else {
-            self.acceptor.unwrap() // Buy order: acceptor is CryptoGuy  
-        }
-    }
-    
-    /// Get who is the FiatGuy in this order
-    pub fn get_fiat_guy(&self) -> Pubkey {
-        if self.is_sell_order {
-            self.acceptor.unwrap() // Sell order: acceptor is FiatGuy
-        } else {
-            self.creator // Buy order: creator is FiatGuy
-        }
-    }
+
     
     /// Get remaining amount that can be filled
     pub fn remaining_amount(&self) -> u64 {

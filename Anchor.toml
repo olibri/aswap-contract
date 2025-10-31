@@ -8,15 +8,21 @@ skip-lint = false
 [programs.localnet]
 ddd = "RVCEK6tHXkRgLFwK2oYyPyvT3nHcZ5CaFzTKCn96WCe"
 
+[programs.mainnet]
+ddd = "2sy9dsjm6fsqeMEL49FWJkXz5eavc5qaHD1xyactQuP5"
+
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
 # cluster = "https://devnet.helius-rpc.com/?api-key=839f7b0a-bc48-48cd-9d38-acd8c0307e90"
 # ws =      "wss://devnet.helius-rpc.com/?api-key=839f7b0a-bc48-48cd-9d38-acd8c0307e90"
-cluster = "https://frosty-little-aura.solana-devnet.quiknode.pro/"
-ws =      "wss://frosty-little-aura.solana-devnet.quiknode.pro/"
-wallet = "~/.config/solana/id.json"
+# cluster = "https://frosty-little-aura.solana-devnet.quiknode.pro/"
+# ws =      "wss://frosty-little-aura.solana-devnet.quiknode.pro/"
+
+cluster = "https://mainnet.helius-rpc.com/?api-key=58411f79-a912-4b5c-850a-35be0baefa71"
+ws =      "wss://mainnet.helius-rpc.com/?api-key=58411f79-a912-4b5c-850a-35be0baefa71"
+wallet = "~/.config/solana/mainnet-deployer.json"
 
 
 [scripts]

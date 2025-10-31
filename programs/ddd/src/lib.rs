@@ -10,7 +10,7 @@ pub use universal::*;
 
 use anchor_lang::prelude::*;
 
-declare_id!("RVCEK6tHXkRgLFwK2oYyPyvT3nHcZ5CaFzTKCn96WCe");
+declare_id!("2sy9dsjm6fsqeMEL49FWJkXz5eavc5qaHD1xyactQuP5");
 
 #[program]
 pub mod ddd {
