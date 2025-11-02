@@ -17,14 +17,18 @@ pub fn auto_close_if_needed<'info>(
 ) -> Result<()> {
     let should_close = if is_refund {
         // Refund = order cancelled, always close
+        msg!("Auto-close check: is_refund=true, will close");
         true
     } else {
         // Payout = check if order fully completed
         let remaining = order.remaining_amount();
-        remaining == 0 && order.reserved_amount == 0
+        let will_close = remaining == 0 && order.reserved_amount == 0;
+        msg!("Auto-close check: remaining={}, reserved={}, will_close={}", remaining, order.reserved_amount, will_close);
+        will_close
     };
 
     if !should_close {
+        msg!("Auto-close skipped: conditions not met");
         return Ok(());
     }
 
@@ -61,13 +65,13 @@ pub fn auto_close_if_needed<'info>(
 
         close_account(cpi_ctx)?;
         msg!("Vault closed, rent returned to admin");
+
+        // Close order account and return rent to admin (only after vault is closed)
+        order.close(admin_rent_receiver.clone())?;
+        msg!("Order closed, rent returned to admin");
     } else {
         msg!("Warning: Vault still has {} tokens, cannot close yet", vault_balance);
     }
-
-    // Close order account and return rent to admin
-    order.close(admin_rent_receiver.clone())?;
-    msg!("Order closed, rent returned to admin");
 
     Ok(())
 }

@@ -4,7 +4,6 @@ use anchor_spl::token::{Token, TokenAccount, Transfer, transfer};
 use crate::universal::state::*;
 use crate::universal::errors::UniversalOrderError;
 use crate::universal::utils::fees::calculate_fee;
-use crate::universal::utils::auto_close::auto_close_if_needed;
 
 /// Sign a specific ticket; on both signatures, settle that ticket amount
 pub fn sign_ticket(
@@ -127,30 +126,73 @@ pub fn sign_ticket(
             timestamp: clock.unix_timestamp,
         });
 
-        // Close the ticket account returning rent to admin (who paid for ticket creation)
-        ticket.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
+        // Read vault balance directly from account data (after transfers completed)
+        let vault_account = ctx.accounts.vault.to_account_info();
+        let vault_data = vault_account.try_borrow_data()?;
+        let vault_balance = u64::from_le_bytes(vault_data[64..72].try_into().unwrap());
+        drop(vault_data); // Release borrow
+        msg!("Vault balance after transfers: {}", vault_balance);
 
-        // AUTO-CLOSE order if fully completed
-        auto_close_if_needed(
-            &mut ctx.accounts.order,
-            &ctx.accounts.vault,
-            &ctx.accounts.admin_rent_receiver.to_account_info(),
-            &ctx.accounts.token_program.to_account_info(),
-            false, // is_refund = false (only close if completed)
-        )?;
-        
-        // Check if order was closed by auto_close
-        let order_closed = ctx.accounts.order.to_account_info().data_is_empty();
-        if order_closed {
-            return Ok(());
+        // AUTO-CLOSE order if fully completed (pass vault balance directly)
+        if vault_balance == 0 {
+            let order = &ctx.accounts.order;
+            let remaining = order.remaining_amount();
+            let should_close = remaining == 0 && order.reserved_amount == 0;
+            
+            if should_close {
+                msg!("Auto-closing vault and order, returning rent to admin.");
+                
+                let order_creator = order.creator;
+                let order_mint = order.crypto_mint;
+                let order_id_le = order.order_id.to_le_bytes();
+                let order_bump = order.bump;
+
+                let seeds = &[
+                    b"universal_order".as_ref(),
+                    order_creator.as_ref(),
+                    order_mint.as_ref(),
+                    order_id_le.as_ref(),
+                    &[order_bump],
+                ];
+                let signer = &[&seeds[..]];
+
+                let close_vault_accounts = anchor_spl::token::CloseAccount {
+                    account: ctx.accounts.vault.to_account_info(),
+                    destination: ctx.accounts.admin_rent_receiver.to_account_info(),
+                    authority: ctx.accounts.order.to_account_info(),
+                };
+
+                let cpi_ctx = CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    close_vault_accounts,
+                    signer,
+                );
+
+                anchor_spl::token::close_account(cpi_ctx)?;
+                msg!("Vault closed, rent returned to admin");
+
+                // Close order account and return rent to admin
+                ctx.accounts.order.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
+                msg!("Order closed, rent returned to admin");
+
+                // Close the ticket account returning rent to admin (LAST!)
+                ticket.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
+                msg!("Ticket closed, rent returned to admin");
+                
+                return Ok(());
+            }
         }
+
+        // If vault not empty or order not completed, just close ticket
+        ticket.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
+        
+        // If not closed, continue to update timestamp
+        return Ok(());
     }
 
-    // Finally, update order timestamp (if not auto-closed)
-    {
-        let order = &mut ctx.accounts.order;
-        order.updated_at = clock.unix_timestamp;
-    }
+    // If NOT both signed yet, update order timestamp
+    let order = &mut ctx.accounts.order;
+    order.updated_at = clock.unix_timestamp;
 
     Ok(())
 }

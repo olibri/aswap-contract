@@ -4,7 +4,6 @@ use anchor_spl::token::{Token, TokenAccount, Transfer, transfer};
 use crate::universal::state::*;
 use crate::universal::errors::UniversalOrderError;
 use crate::universal::utils::fees::calculate_fee;
-use crate::universal::utils::auto_close::auto_close_if_needed;
 use crate::constants::ADMIN_PUBKEY;
 
 /// Admin resolve for a specific ticket: either settle to FiatGuy or refund to CryptoGuy
@@ -94,18 +93,57 @@ pub fn admin_resolve_ticket(
         ticket.fiat_guy_signed = true;
         ticket.amount = 0;
 
-        // Return rent to admin (who paid for ticket creation)
-        let admin_info = ctx.accounts.admin_rent_receiver.to_account_info();
-        ticket.close(admin_info)?;
+        // Read vault balance after transfers
+        let vault_account = ctx.accounts.vault.to_account_info();
+        let vault_data = vault_account.try_borrow_data()?;
+        let vault_balance = u64::from_le_bytes(vault_data[64..72].try_into().unwrap());
+        drop(vault_data);
 
-        // AUTO-CLOSE: Check if order is fully completed (payout path)
-        auto_close_if_needed(
-            &mut ctx.accounts.order,
-            &ctx.accounts.vault,
-            &ctx.accounts.admin_rent_receiver.to_account_info(),
-            &ctx.accounts.token_program.to_account_info(),
-            false, // is_refund = false (only close if completed)
-        )?;
+        // AUTO-CLOSE if vault empty and order completed
+        if vault_balance == 0 {
+            let order = &ctx.accounts.order;
+            let remaining = order.remaining_amount();
+            let should_close = remaining == 0 && order.reserved_amount == 0;
+            
+            if should_close {
+                msg!("Auto-closing vault and order after admin payout");
+                
+                let seeds = &[
+                    b"universal_order".as_ref(),
+                    order_creator.as_ref(),
+                    order_mint.as_ref(),
+                    order_id_le.as_ref(),
+                    &[order_bump],
+                ];
+                let signer = &[&seeds[..]];
+
+                let close_vault_accounts = anchor_spl::token::CloseAccount {
+                    account: ctx.accounts.vault.to_account_info(),
+                    destination: ctx.accounts.admin_rent_receiver.to_account_info(),
+                    authority: ctx.accounts.order.to_account_info(),
+                };
+
+                let cpi_ctx = CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    close_vault_accounts,
+                    signer,
+                );
+
+                anchor_spl::token::close_account(cpi_ctx)?;
+                msg!("Vault closed");
+
+                ctx.accounts.order.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
+                msg!("Order closed");
+
+                ticket.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
+                msg!("Ticket closed");
+                
+                return Ok(());
+            }
+        }
+        
+        // If not closing everything, just close ticket
+        ticket.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
     } else {
         // Refund path
         if is_sell {
@@ -145,18 +183,51 @@ pub fn admin_resolve_ticket(
             ticket.fiat_guy_signed = false;
             ticket.amount = 0;
 
-            // Close ticket and return rent to admin
-            let admin_info = ctx.accounts.admin_rent_receiver.to_account_info();
-            ticket.close(admin_info)?;
+            // Read vault balance after refund transfer
+            let vault_account = ctx.accounts.vault.to_account_info();
+            let vault_data = vault_account.try_borrow_data()?;
+            let vault_balance = u64::from_le_bytes(vault_data[64..72].try_into().unwrap());
+            drop(vault_data);
 
-            // AUTO-CLOSE: Refund means order is cancelled (always close)
-            auto_close_if_needed(
-                &mut ctx.accounts.order,
-                &ctx.accounts.vault,
-                &ctx.accounts.admin_rent_receiver.to_account_info(),
-                &ctx.accounts.token_program.to_account_info(),
-                true, // is_refund = true (always close)
-            )?;
+            // AUTO-CLOSE: Refund means order is cancelled, close if vault empty
+            if vault_balance == 0 {
+                msg!("Auto-closing vault and order after admin refund (SELL)");
+                
+                let seeds = &[
+                    b"universal_order".as_ref(),
+                    order_creator.as_ref(),
+                    order_mint.as_ref(),
+                    order_id_le.as_ref(),
+                    &[order_bump],
+                ];
+                let signer = &[&seeds[..]];
+
+                let close_vault_accounts = anchor_spl::token::CloseAccount {
+                    account: ctx.accounts.vault.to_account_info(),
+                    destination: ctx.accounts.admin_rent_receiver.to_account_info(),
+                    authority: ctx.accounts.order.to_account_info(),
+                };
+
+                let cpi_ctx = CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    close_vault_accounts,
+                    signer,
+                );
+
+                anchor_spl::token::close_account(cpi_ctx)?;
+                msg!("Vault closed");
+
+                ctx.accounts.order.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
+                msg!("Order closed");
+
+                ticket.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
+                msg!("Ticket closed");
+                
+                return Ok(());
+            }
+            
+            // If not closing, just close ticket
+            ticket.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
         } else {
             // Buy order: refund to ticket.acceptor (CryptoGuy)
             let acceptor_ata = ctx.accounts.crypto_guy_token_account.as_ref()
@@ -192,18 +263,49 @@ pub fn admin_resolve_ticket(
             ticket.fiat_guy_signed = false;
             ticket.amount = 0;
 
-            // Close ticket and return rent to admin
-            let admin_info = ctx.accounts.admin_rent_receiver.to_account_info();
-            ticket.close(admin_info)?;
+            // Read vault balance after refund transfer
+            let vault_account = ctx.accounts.vault.to_account_info();
+            let vault_data = vault_account.try_borrow_data()?;
+            let vault_balance = u64::from_le_bytes(vault_data[64..72].try_into().unwrap());
+            drop(vault_data);
 
-            // AUTO-CLOSE: Refund means order is cancelled (always close)
-            auto_close_if_needed(
-                &mut ctx.accounts.order,
-                &ctx.accounts.vault,
-                &ctx.accounts.admin_rent_receiver.to_account_info(),
-                &ctx.accounts.token_program.to_account_info(),
-                true, // is_refund = true (always close)
-            )?;
+            // AUTO-CLOSE: Refund means order is cancelled, close if vault empty
+            if vault_balance == 0 {
+                msg!("Auto-closing vault and order after admin refund (BUY)");
+                
+                let seeds = &[
+                    b"universal_order".as_ref(),
+                    order_creator.as_ref(),
+                    order_mint.as_ref(),
+                    order_id_le.as_ref(),
+                    &[order_bump],
+                ];
+                let signer = &[&seeds[..]];
+
+                let close_vault_accounts = anchor_spl::token::CloseAccount {
+                    account: ctx.accounts.vault.to_account_info(),
+                    destination: ctx.accounts.admin_rent_receiver.to_account_info(),
+                    authority: ctx.accounts.order.to_account_info(),
+                };
+
+                let cpi_ctx = CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    close_vault_accounts,
+                    signer,
+                );
+
+                anchor_spl::token::close_account(cpi_ctx)?;
+                msg!("Vault closed");
+
+                ctx.accounts.order.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
+                msg!("Order closed");
+
+                ticket.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
+                msg!("Ticket closed");
+            } else {
+                // If not closing, just close ticket
+                ticket.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
+            }
         }
     }
 

@@ -38,6 +38,13 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
     const DECIMALS = 6;
     const usdc = (n: number) => new anchor.BN(Math.round(n * 1_000_000));
 
+    // Helper to log admin SOL balance
+    const logAdminBalance = async (label: string) => {
+        const balance = await connection.getBalance(adminSigner.publicKey);
+        console.log(`💰 ${label}: ${(balance / 1_000_000_000).toFixed(5)} SOL`);
+        return balance;
+    };
+
     before("setup token mint and users", async () => {
         await checkDonorBalance(connection);
 
@@ -102,7 +109,148 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         } catch (e) {}
     });
 
-    it.only("✅ SELL: full flow with dual signature → auto-close", async () => {
+    it("💰 RENT TEST: Admin SOL balance restored after full flow", async () => {
+        const orderId = new anchor.BN(Date.now());
+        const ticketId = new anchor.BN(1);
+        const cryptoAmount = usdc(10);
+        const fiatAmount = new anchor.BN(1000);
+
+        console.log("\n💰 === RENT RECOVERY TEST ===");
+        
+        // Get admin SOL balance BEFORE creating accounts
+        const adminBalanceBefore = await connection.getBalance(adminSigner.publicKey);
+        console.log("🏦 Admin SOL before:", (adminBalanceBefore / 1_000_000_000).toFixed(5), "SOL");
+
+        console.log("\n📦 Step 1: Accept offer & lock (admin pays rent for Order + Vault + Ticket)");
+        const beforeCrypto = await getTokenBalance(connection, cryptoGuyTokenAccount);
+        
+        const { orderPda, vaultPda, ticketPda } = await acceptOfferAndLock(
+            program, orderId, ticketId, cryptoAmount, fiatAmount, true,
+            cryptoGuy.publicKey, fiatGuy.publicKey, cryptoGuy,
+            cryptoGuyTokenAccount, tokenSetup.mint, adminSigner
+        );
+
+        await waitForCooldown();
+
+        const adminBalanceAfterLock = await connection.getBalance(adminSigner.publicKey);
+        const rentPaid = adminBalanceBefore - adminBalanceAfterLock;
+        console.log("💸 Rent paid for accounts:", (rentPaid / 1_000_000_000).toFixed(5), "SOL");
+        console.log("🏦 Admin SOL after lock:", (adminBalanceAfterLock / 1_000_000_000).toFixed(5), "SOL");
+
+        const afterLock = await getTokenBalance(connection, cryptoGuyTokenAccount);
+        const vaultBal = await getTokenBalance(connection, vaultPda);
+        
+        expect(beforeCrypto - afterLock).to.eq(cryptoAmount.toNumber());
+        expect(vaultBal).to.eq(cryptoAmount.toNumber());
+        console.log("✓ Locked:", vaultBal / 1_000_000, "USDC");
+
+        console.log("\n✍️ Step 2: FiatGuy signs");
+        await signTicket(
+            program, fiatGuy, orderPda, vaultPda, ticketPda,
+            fiatGuyTokenAccount, adminTokenAccount, adminSigner.publicKey
+        );
+        await waitForCooldown();
+
+        console.log("✍️ Step 3: CryptoGuy signs → settlement & auto-close");
+        const beforeFiat = await getTokenBalance(connection, fiatGuyTokenAccount);
+
+        const txSig = await signTicket(
+            program, cryptoGuy, orderPda, vaultPda, ticketPda,
+            fiatGuyTokenAccount, adminTokenAccount, adminSigner.publicKey
+        );
+
+        await waitForCooldown();
+
+        // Get transaction logs to see program messages
+        const txDetails = await connection.getTransaction(txSig, {
+            maxSupportedTransactionVersion: 0,
+            commitment: 'confirmed'
+        });
+        
+        if (txDetails?.meta?.logMessages) {
+            console.log("\n📋 Transaction logs:");
+            txDetails.meta.logMessages
+                .filter(log => log.includes("Auto-close") || log.includes("Vault") || log.includes("Order closed"))
+                .forEach(log => console.log("   ", log));
+        }
+
+        const afterFiat = await getTokenBalance(connection, fiatGuyTokenAccount);
+        const fee = Math.floor(cryptoAmount.toNumber() * 20 / 10_000);
+        expect(afterFiat - beforeFiat).to.eq(cryptoAmount.toNumber() - fee);
+        console.log("✓ FiatGuy received:", (afterFiat - beforeFiat) / 1_000_000, "USDC");
+
+        // Check vault balance AFTER settlement
+        console.log("\n🔍 Checking accounts status...");
+        try {
+            const vaultInfo = await connection.getAccountInfo(vaultPda);
+            if (vaultInfo) {
+                const vaultBalance = await getTokenBalance(connection, vaultPda);
+                console.log("🏦 Vault balance after settlement:", vaultBalance / 1_000_000, "USDC");
+            } else {
+                console.log("✓ Vault is closed");
+            }
+        } catch (e) {
+            console.log("✓ Vault is closed");
+        }
+
+        // Verify accounts are closed
+        try {
+            const orderData = await program.account.universalOrder.fetch(orderPda);
+            console.log("❌ Order still exists!");
+            console.log("   - filled_amount:", orderData.filledAmount.toString());
+            console.log("   - crypto_amount:", orderData.cryptoAmount.toString());
+            console.log("   - reserved_amount:", orderData.reservedAmount.toString());
+            console.log("   - remaining:", orderData.cryptoAmount.toNumber() - orderData.filledAmount.toNumber());
+            throw new Error("Order should be closed but still exists");
+        } catch (e: any) {
+            if (e.message.includes("should be closed")) {
+                throw e;
+            }
+            expect(e.message).to.include("Account does not exist");
+            console.log("✓ Order closed");
+        }
+
+        try {
+            await program.account.fillTicket.fetch(ticketPda);
+            throw new Error("Ticket should be closed");
+        } catch (e: any) {
+            expect(e.message).to.include("Account does not exist");
+            console.log("✓ Ticket closed");
+        }
+
+        try {
+            await connection.getAccountInfo(vaultPda);
+            const vaultInfo = await connection.getAccountInfo(vaultPda);
+            if (vaultInfo !== null) {
+                throw new Error("Vault should be closed");
+            }
+            console.log("✓ Vault closed");
+        } catch (e: any) {
+            if (e.message !== "Vault should be closed") {
+                console.log("✓ Vault closed");
+            } else {
+                throw e;
+            }
+        }
+
+        // Get admin SOL balance AFTER accounts closed
+        const adminBalanceAfter = await connection.getBalance(adminSigner.publicKey);
+        const rentRecovered = adminBalanceAfter - adminBalanceAfterLock;
+        console.log("\n💰 Rent recovered:", (rentRecovered / 1_000_000_000).toFixed(5), "SOL");
+        console.log("🏦 Admin SOL after close:", (adminBalanceAfter / 1_000_000_000).toFixed(5), "SOL");
+        
+        const netLoss = adminBalanceBefore - adminBalanceAfter;
+        console.log("\n📊 NET LOSS (should be ~0):", (netLoss / 1_000_000_000).toFixed(5), "SOL");
+        
+        // Allow for small tx fees (~0.00001 SOL per tx = 3 txs = ~0.00003 SOL)
+        const maxAcceptableLoss = 0.0001; // 0.0001 SOL tolerance for tx fees
+        expect(netLoss / 1_000_000_000).to.be.lessThan(maxAcceptableLoss);
+        
+        console.log("✅ RENT FULLY RECOVERED! Admin only lost tx fees.");
+        console.log("=".repeat(50) + "\n");
+    });
+
+    it("✅ SELL: full flow with dual signature → auto-close", async () => {
         const orderId = new anchor.BN(Date.now());
         const ticketId = new anchor.BN(1);
         const cryptoAmount = usdc(10);
@@ -157,13 +305,14 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         }
     });
 
-    it("✅ SELL: FiatGuy cancels → refund + auto-close", async () => {
+    it.only("✅ SELL: FiatGuy cancels → refund + auto-close", async () => {
         const orderId = new anchor.BN(Date.now() + 1);
         const ticketId = new anchor.BN(1);
         const cryptoAmount = usdc(5);
         const fiatAmount = new anchor.BN(500);
 
-        console.log("📦 SELL: FiatGuy cancels");
+        console.log("\n📦 SELL: FiatGuy cancels");
+        const balanceBefore = await logAdminBalance("Admin SOL before");
 
         const { orderPda, vaultPda, ticketPda } = await acceptOfferAndLock(
             program, orderId, ticketId, cryptoAmount, fiatAmount, true,
@@ -171,6 +320,10 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
             cryptoGuyTokenAccount, tokenSetup.mint, adminSigner
         );
         await waitForCooldown();
+
+        const balanceAfterLock = await logAdminBalance("Admin SOL after lock");
+        const rentPaid = balanceBefore - balanceAfterLock;
+        console.log(`💸 Rent paid: ${(rentPaid / 1_000_000_000).toFixed(5)} SOL`);
 
         const beforeCrypto = await getTokenBalance(connection, cryptoGuyTokenAccount);
 
@@ -191,6 +344,13 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
             expect(e.message).to.include("Account does not exist");
             console.log("✓ Auto-closed after cancel");
         }
+
+        const balanceAfter = await logAdminBalance("Admin SOL after cancel");
+        const rentRecovered = balanceAfter - balanceAfterLock;
+        const netLoss = balanceBefore - balanceAfter;
+        console.log(`💰 Rent recovered: ${(rentRecovered / 1_000_000_000).toFixed(5)} SOL`);
+        console.log(`📊 NET LOSS: ${(netLoss / 1_000_000_000).toFixed(5)} SOL`);
+        expect(netLoss / 1_000_000_000).to.be.lessThan(0.0001);
     });
 
     it("❌ SELL: CryptoGuy cannot cancel", async () => {
@@ -272,10 +432,13 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         }
     });
 
-    it("✅ Admin payout SELL → auto-close", async () => {
+    it.only("✅ Admin payout SELL → auto-close", async () => {
         const orderId = new anchor.BN(Date.now() + 200);
         const ticketId = new anchor.BN(1);
         const cryptoAmount = usdc(6);
+
+        console.log("\n📦 Admin payout SELL");
+        const balanceBefore = await logAdminBalance("Admin SOL before");
 
         const { orderPda, vaultPda, ticketPda } = await acceptOfferAndLock(
             program, orderId, ticketId, cryptoAmount, new anchor.BN(600), true,
@@ -283,6 +446,10 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
             cryptoGuyTokenAccount, tokenSetup.mint, adminSigner
         );
         await waitForCooldown();
+
+        const balanceAfterLock = await logAdminBalance("Admin SOL after lock");
+        const rentPaid = balanceBefore - balanceAfterLock;
+        console.log(`💸 Rent paid: ${(rentPaid / 1_000_000_000).toFixed(5)} SOL`);
 
         const beforeFiat = await getTokenBalance(connection, fiatGuyTokenAccount);
         const ticketData = await program.account.fillTicket.fetch(ticketPda);
@@ -317,12 +484,22 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
             expect(e.message).to.include("Account does not exist");
             console.log("✓ Auto-closed after admin payout");
         }
+
+        const balanceAfter = await logAdminBalance("Admin SOL after payout");
+        const rentRecovered = balanceAfter - balanceAfterLock;
+        const netLoss = balanceBefore - balanceAfter;
+        console.log(`💰 Rent recovered: ${(rentRecovered / 1_000_000_000).toFixed(5)} SOL`);
+        console.log(`📊 NET LOSS: ${(netLoss / 1_000_000_000).toFixed(5)} SOL`);
+        expect(netLoss / 1_000_000_000).to.be.lessThan(0.0001);
     });
 
-    it("✅ Admin refund SELL → auto-close", async () => {
+    it.only("✅ Admin refund SELL → auto-close", async () => {
         const orderId = new anchor.BN(Date.now() + 201);
         const ticketId = new anchor.BN(1);
         const cryptoAmount = usdc(4);
+
+        console.log("\n📦 Admin refund SELL");
+        const balanceBefore = await logAdminBalance("Admin SOL before");
 
         const { orderPda, vaultPda, ticketPda } = await acceptOfferAndLock(
             program, orderId, ticketId, cryptoAmount, new anchor.BN(400), true,
@@ -330,6 +507,10 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
             cryptoGuyTokenAccount, tokenSetup.mint, adminSigner
         );
         await waitForCooldown();
+
+        const balanceAfterLock = await logAdminBalance("Admin SOL after lock");
+        const rentPaid = balanceBefore - balanceAfterLock;
+        console.log(`💸 Rent paid: ${(rentPaid / 1_000_000_000).toFixed(5)} SOL`);
 
         const beforeCrypto = await getTokenBalance(connection, cryptoGuyTokenAccount);
         const ticketData = await program.account.fillTicket.fetch(ticketPda);
@@ -363,5 +544,12 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
             expect(e.message).to.include("Account does not exist");
             console.log("✓ Auto-closed after admin refund");
         }
+
+        const balanceAfter = await logAdminBalance("Admin SOL after refund");
+        const rentRecovered = balanceAfter - balanceAfterLock;
+        const netLoss = balanceBefore - balanceAfter;
+        console.log(`💰 Rent recovered: ${(rentRecovered / 1_000_000_000).toFixed(5)} SOL`);
+        console.log(`📊 NET LOSS: ${(netLoss / 1_000_000_000).toFixed(5)} SOL`);
+        expect(netLoss / 1_000_000_000).to.be.lessThan(0.0001);
     });
 });
