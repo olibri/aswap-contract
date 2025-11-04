@@ -35,7 +35,7 @@ pub fn admin_resolve_ticket(
     require!(amount > 0, UniversalOrderError::InvalidAmount);
 
     if release_to_fiat_guy {
-        // Payout path: 99.8% to FiatGuy + 0.2% to Admin
+        // Payout path: 99.75% to FiatGuy + 0.25% to Admin
         let fiat_ata = ctx.accounts.fiat_guy_token_account.as_ref()
             .ok_or(UniversalOrderError::TokenAccountRequired)?;
         require!(fiat_ata.mint == order_mint, UniversalOrderError::InvalidTokenAccount);
@@ -47,7 +47,7 @@ pub fn admin_resolve_ticket(
         require!(admin_fee_account.mint == order_mint, UniversalOrderError::InvalidTokenAccount);
         require!(admin_fee_account.owner == ADMIN_PUBKEY, UniversalOrderError::Unauthorized);
 
-        // Calculate 0.2% fee
+        // Calculate 0.25% fee
         let (fee_amount, net_amount) = calculate_fee(amount)?;
 
         let seeds = &[
@@ -59,7 +59,7 @@ pub fn admin_resolve_ticket(
         ];
         let signer = &[&seeds[..]];
 
-        // Transfer 1: 99.8% to FiatGuy
+        // Transfer 1: 99.75% to FiatGuy
         let cpi = CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             Transfer {
@@ -71,7 +71,7 @@ pub fn admin_resolve_ticket(
         );
         transfer(cpi, net_amount)?;
 
-        // Transfer 2: 0.2% to Admin (fee)
+        // Transfer 2: 0.25% to Admin (fee)
         let fee_cpi = CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             Transfer {
@@ -357,7 +357,7 @@ pub struct AdminResolveTicket<'info> {
     #[account(mut)]
     pub crypto_guy_token_account: Option<Account<'info, TokenAccount>>,
 
-    /// Admin's token account (for 0.2% fee on payouts only)
+    /// Admin's token account (for 0.25% fee on payouts only)
     #[account(mut)]
     pub admin_fee_account: Option<Account<'info, TokenAccount>>,
 

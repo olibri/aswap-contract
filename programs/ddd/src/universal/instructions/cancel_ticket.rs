@@ -128,7 +128,14 @@ pub fn cancel_ticket(
 
 #[derive(Accounts)]
 pub struct CancelTicket<'info> {
-    /// FiatGuy who cancels
+    /// Admin pays transaction fee (first signer = pays transaction fee)
+    #[account(
+        mut,
+        address = crate::constants::ADMIN_PUBKEY @ UniversalOrderError::Unauthorized
+    )]
+    pub fee_payer: Signer<'info>,
+
+    /// FiatGuy who cancels (second signer)
     #[account(mut)]
     pub canceller: Signer<'info>,
 

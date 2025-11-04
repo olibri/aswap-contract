@@ -43,8 +43,8 @@ pub struct TicketSettled {
     pub order: Pubkey,
     pub ticket: Pubkey,
     pub amount: u64,          // Total amount (100%)
-    pub fee_amount: u64,      // Fee amount (0.2%)
-    pub net_amount: u64,      // Net to fiat_guy (99.8%)
+    pub fee_amount: u64,      // Fee amount (0.25%)
+    pub net_amount: u64,      // Net to fiat_guy (99.75%)
     pub fiat_guy: Pubkey,
     pub crypto_guy: Pubkey,
     pub total_filled: u64,

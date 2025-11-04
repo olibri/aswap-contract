@@ -109,7 +109,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         } catch (e) {}
     });
 
-    it("💰 RENT TEST: Admin SOL balance restored after full flow", async () => {
+    it.only("💰 RENT TEST: Admin SOL balance restored after full flow", async () => {
         const orderId = new anchor.BN(Date.now());
         const ticketId = new anchor.BN(1);
         const cryptoAmount = usdc(10);
@@ -147,7 +147,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         console.log("\n✍️ Step 2: FiatGuy signs");
         await signTicket(
             program, fiatGuy, orderPda, vaultPda, ticketPda,
-            fiatGuyTokenAccount, adminTokenAccount, adminSigner.publicKey
+            fiatGuyTokenAccount, adminTokenAccount, adminSigner
         );
         await waitForCooldown();
 
@@ -156,7 +156,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
 
         const txSig = await signTicket(
             program, cryptoGuy, orderPda, vaultPda, ticketPda,
-            fiatGuyTokenAccount, adminTokenAccount, adminSigner.publicKey
+            fiatGuyTokenAccount, adminTokenAccount, adminSigner
         );
 
         await waitForCooldown();
@@ -250,7 +250,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         console.log("=".repeat(50) + "\n");
     });
 
-    it("✅ SELL: full flow with dual signature → auto-close", async () => {
+    it.only("✅ SELL: full flow with dual signature → auto-close", async () => {
         const orderId = new anchor.BN(Date.now());
         const ticketId = new anchor.BN(1);
         const cryptoAmount = usdc(10);
@@ -277,7 +277,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         console.log("✍️ FiatGuy signs");
         await signTicket(
             program, fiatGuy, orderPda, vaultPda, ticketPda,
-            fiatGuyTokenAccount, adminTokenAccount, adminSigner.publicKey
+            fiatGuyTokenAccount, adminTokenAccount, adminSigner
         );
         await waitForCooldown();
 
@@ -286,7 +286,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
 
         await signTicket(
             program, cryptoGuy, orderPda, vaultPda, ticketPda,
-            fiatGuyTokenAccount, adminTokenAccount, adminSigner.publicKey
+            fiatGuyTokenAccount, adminTokenAccount, adminSigner
         );
 
         await waitForCooldown();
@@ -305,7 +305,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         }
     });
 
-    it.only("✅ SELL: FiatGuy cancels → refund + auto-close", async () => {
+    it("✅ SELL: FiatGuy cancels → refund + auto-close", async () => {
         const orderId = new anchor.BN(Date.now() + 1);
         const ticketId = new anchor.BN(1);
         const cryptoAmount = usdc(5);
@@ -329,7 +329,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
 
         await cancelTicket(
             program, fiatGuy, orderPda, vaultPda, ticketPda,
-            cryptoGuyTokenAccount, adminSigner.publicKey
+            cryptoGuyTokenAccount, adminSigner
         );
         await waitForCooldown();
 
@@ -353,7 +353,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         expect(netLoss / 1_000_000_000).to.be.lessThan(0.0001);
     });
 
-    it("❌ SELL: CryptoGuy cannot cancel", async () => {
+    it.only("❌ SELL: CryptoGuy cannot cancel", async () => {
         const orderId = new anchor.BN(Date.now() + 2);
         const ticketId = new anchor.BN(1);
         const cryptoAmount = usdc(3);
@@ -368,7 +368,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         try {
             await cancelTicket(
                 program, cryptoGuy, orderPda, vaultPda, ticketPda,
-                cryptoGuyTokenAccount, adminSigner.publicKey
+                cryptoGuyTokenAccount, adminSigner
             );
             throw new Error("Should fail");
         } catch (e: any) {
@@ -378,11 +378,11 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
 
         await cancelTicket(
             program, fiatGuy, orderPda, vaultPda, ticketPda,
-            cryptoGuyTokenAccount, adminSigner.publicKey
+            cryptoGuyTokenAccount, adminSigner
         );
     });
 
-    it("✅ BUY: full flow → auto-close", async () => {
+    it.only("✅ BUY: full flow → auto-close", async () => {
         const orderId = new anchor.BN(Date.now() + 100);
         const ticketId = new anchor.BN(1);
         const cryptoAmount = usdc(8);
@@ -406,7 +406,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
 
         await signTicket(
             program, fiatGuy, orderPda, vaultPda, ticketPda,
-            fiatGuyTokenAccount, adminTokenAccount, adminSigner.publicKey
+            fiatGuyTokenAccount, adminTokenAccount, adminSigner
         );
         await waitForCooldown();
 
@@ -414,7 +414,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
 
         await signTicket(
             program, cryptoGuy, orderPda, vaultPda, ticketPda,
-            fiatGuyTokenAccount, adminTokenAccount, adminSigner.publicKey
+            fiatGuyTokenAccount, adminTokenAccount, adminSigner
         );
         await waitForCooldown();
 
@@ -432,7 +432,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         }
     });
 
-    it.only("✅ Admin payout SELL → auto-close", async () => {
+    it("✅ Admin payout SELL → auto-close", async () => {
         const orderId = new anchor.BN(Date.now() + 200);
         const ticketId = new anchor.BN(1);
         const cryptoAmount = usdc(6);
@@ -493,7 +493,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         expect(netLoss / 1_000_000_000).to.be.lessThan(0.0001);
     });
 
-    it.only("✅ Admin refund SELL → auto-close", async () => {
+    it("✅ Admin refund SELL → auto-close", async () => {
         const orderId = new anchor.BN(Date.now() + 201);
         const ticketId = new anchor.BN(1);
         const cryptoAmount = usdc(4);

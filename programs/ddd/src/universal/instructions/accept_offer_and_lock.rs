@@ -116,16 +116,16 @@ pub fn accept_offer_and_lock(
 #[derive(Accounts)]
 #[instruction(order_id: u64, ticket_id: u64, crypto_amount: u64, fiat_amount: u64, is_sell_order: bool, creator: Pubkey)]
 pub struct AcceptOfferAndLock<'info> {
-    /// CryptoGuy who locks the tokens (signer)
-    #[account(mut)]
-    pub locker: Signer<'info>,
-
-    /// Admin pays rent for order, vault, and ticket creation
+    /// Admin pays rent AND transaction fee (first signer = pays transaction fee)
     #[account(
         mut,
         address = crate::constants::ADMIN_PUBKEY @ UniversalOrderError::Unauthorized
     )]
     pub fee_payer: Signer<'info>,
+
+    /// CryptoGuy who locks the tokens (second signer)
+    #[account(mut)]
+    pub locker: Signer<'info>,
 
     /// New order PDA (created here)
     #[account(

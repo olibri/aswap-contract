@@ -62,8 +62,8 @@ export async function acceptOfferAndLock(
             fiatGuy
         )
         .accounts({
-            locker: cryptoGuy.publicKey,
             feePayer: adminSigner.publicKey,
+            locker: cryptoGuy.publicKey,
             order: orderPda,
             mint: mint,
             vault: vaultPda,
@@ -73,7 +73,7 @@ export async function acceptOfferAndLock(
             associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
             systemProgram: SystemProgram.programId,
         })
-        .signers([cryptoGuy, adminSigner])
+        .signers([adminSigner, cryptoGuy])
         .rpc();
 
     return { signature, orderPda, vaultPda, ticketPda };
@@ -92,7 +92,7 @@ export async function acceptOfferAndLock(
  * @param ticketPda - Ticket PDA
  * @param fiatGuyAta - FiatGuy's token account (receives crypto)
  * @param adminTokenAccount - Admin's token account (receives fee)
- * @param adminPubkey - Admin public key (rent receiver)
+ * @param adminSigner - Admin keypair (pays transaction fee)
  * @returns Transaction signature
  */
 export async function signTicket(
@@ -103,13 +103,14 @@ export async function signTicket(
     ticketPda: PublicKey,
     fiatGuyAta: PublicKey,
     adminTokenAccount: PublicKey,
-    adminPubkey: PublicKey
+    adminSigner: Keypair
 ): Promise<string> {
     return await (program.methods as any)
         .signUniversalTicket()
         .accounts({
+            feePayer: adminSigner.publicKey,
             signer: signer.publicKey,
-            adminRentReceiver: adminPubkey,
+            adminRentReceiver: adminSigner.publicKey,
             order: orderPda,
             vault: vaultPda,
             ticket: ticketPda,
@@ -117,7 +118,7 @@ export async function signTicket(
             adminFeeAccount: adminTokenAccount,
             tokenProgram: TOKEN_PROGRAM_ID,
         })
-        .signers([signer])
+        .signers([adminSigner, signer])
         .rpc();
 }
 
@@ -131,7 +132,7 @@ export async function signTicket(
  * @param vaultPda - Vault PDA
  * @param ticketPda - Ticket PDA
  * @param cryptoGuyAta - CryptoGuy's token account (receives refund)
- * @param adminPubkey - Admin public key (receives rent back)
+ * @param adminSigner - Admin keypair (pays transaction fee)
  * @returns Transaction signature
  */
 export async function cancelTicket(
@@ -141,20 +142,21 @@ export async function cancelTicket(
     vaultPda: PublicKey,
     ticketPda: PublicKey,
     cryptoGuyAta: PublicKey,
-    adminPubkey: PublicKey
+    adminSigner: Keypair
 ): Promise<string> {
     return await (program.methods as any)
         .cancelUniversalTicket()
         .accounts({
+            feePayer: adminSigner.publicKey,
             canceller: canceller.publicKey,
-            adminRentReceiver: adminPubkey,
+            adminRentReceiver: adminSigner.publicKey,
             order: orderPda,
             vault: vaultPda,
             ticket: ticketPda,
             cryptoGuyTokenAccount: cryptoGuyAta,
             tokenProgram: TOKEN_PROGRAM_ID,
         })
-        .signers([canceller])
+        .signers([adminSigner, canceller])
         .rpc();
 }
 

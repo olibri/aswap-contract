@@ -69,7 +69,7 @@ pub fn sign_ticket(
         require!(admin_fee_account.mint == order_mint, UniversalOrderError::InvalidTokenAccount);
         require!(admin_fee_account.owner == crate::constants::ADMIN_PUBKEY, UniversalOrderError::Unauthorized);
 
-        // Calculate 0.2% fee
+        // Calculate 0.25% fee
         let (fee_amount, net_amount) = calculate_fee(amount)?;
 
         // Prepare PDA signer: the vault's owner is the order PDA
@@ -82,7 +82,7 @@ pub fn sign_ticket(
         ];
         let order_signer = &[&order_signer_seeds[..]];
 
-        // Transfer 1: 99.8% to FiatGuy
+        // Transfer 1: 99.75% to FiatGuy
         let transfer_ctx = CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             Transfer {
@@ -94,7 +94,7 @@ pub fn sign_ticket(
         );
         transfer(transfer_ctx, net_amount)?;
 
-        // Transfer 2: 0.2% to Admin (fee)
+        // Transfer 2: 0.25% to Admin (fee)
         let fee_transfer_ctx = CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             Transfer {
@@ -199,7 +199,14 @@ pub fn sign_ticket(
 
 #[derive(Accounts)]
 pub struct SignTicket<'info> {
-    // CHECK:
+    /// Admin pays transaction fee (first signer = pays transaction fee)
+    #[account(
+        mut,
+        address = crate::constants::ADMIN_PUBKEY @ UniversalOrderError::Unauthorized
+    )]
+    pub fee_payer: Signer<'info>,
+
+    /// User who signs the ticket (second signer)
     #[account(mut)]
     pub signer: Signer<'info>,
 
@@ -239,7 +246,7 @@ pub struct SignTicket<'info> {
     #[account(mut)]
     pub fiat_guy_token_account: Option<Account<'info, TokenAccount>>,
 
-    // Admin's token account (for 0.2% fee)
+    // Admin's token account (for 0.25% fee)
     #[account(mut)]
     pub admin_fee_account: Option<Account<'info, TokenAccount>>,
 
