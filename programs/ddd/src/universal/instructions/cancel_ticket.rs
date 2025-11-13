@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_lang::prelude::AccountsClose;
-use anchor_spl::token::{Token, TokenAccount, Transfer, transfer};
+use anchor_spl::token_interface::{TokenAccount, TokenInterface, Mint, transfer_checked, TransferChecked, close_account, CloseAccount};
 use crate::universal::state::*;
 use crate::universal::errors::UniversalOrderError;
 
@@ -38,6 +38,9 @@ pub fn cancel_ticket(
         .ok_or(UniversalOrderError::TokenAccountRequired)?;
     require!(crypto_guy_ata.mint == order_mint, UniversalOrderError::InvalidTokenAccount);
     require!(crypto_guy_ata.owner == crypto_guy, UniversalOrderError::Unauthorized);
+    
+    // Get mint decimals
+    let decimals = ctx.accounts.mint.decimals;
 
     // Prepare PDA signer
     let signer_seeds = &[
@@ -52,14 +55,15 @@ pub fn cancel_ticket(
     // Refund tokens from vault to CryptoGuy
     let transfer_ctx = CpiContext::new_with_signer(
         ctx.accounts.token_program.to_account_info(),
-        Transfer {
+        TransferChecked {
             from: ctx.accounts.vault.to_account_info(),
             to: crypto_guy_ata.to_account_info(),
             authority: ctx.accounts.order.to_account_info(),
+            mint: ctx.accounts.mint.to_account_info(),
         },
         signer,
     );
-    transfer(transfer_ctx, ticket.amount)?;
+    transfer_checked(transfer_ctx, ticket.amount, decimals)?;
 
     // Emit cancellation event
     emit!(crate::universal::events::TicketCancelled {
@@ -96,7 +100,7 @@ pub fn cancel_ticket(
         ];
         let signer = &[&seeds[..]];
 
-        let close_vault_accounts = anchor_spl::token::CloseAccount {
+        let close_vault_accounts = CloseAccount {
             account: ctx.accounts.vault.to_account_info(),
             destination: ctx.accounts.admin_rent_receiver.to_account_info(),
             authority: ctx.accounts.order.to_account_info(),
@@ -108,7 +112,7 @@ pub fn cancel_ticket(
             signer,
         );
 
-        anchor_spl::token::close_account(cpi_ctx)?;
+        close_account(cpi_ctx)?;
         msg!("Vault closed, rent returned to admin");
 
         // Close order account and return rent to admin
@@ -153,15 +157,19 @@ pub struct CancelTicket<'info> {
         bump = order.bump
     )]
     pub order: Account<'info, UniversalOrder>,
+    
+    /// Mint account - needed for transfer_checked
+    pub mint: InterfaceAccount<'info, Mint>,
 
-    /// Vault (will be closed after refund)
+    /// Vault (will be closed after refund) - supports both SPL Token and Token-2022
     #[account(
         mut,
         seeds = [b"vault", order.key().as_ref()],
         bump,
-        constraint = vault.mint == order.crypto_mint
+        constraint = vault.mint == order.crypto_mint @ UniversalOrderError::InvalidTokenAccount,
+        constraint = vault.mint == mint.key() @ UniversalOrderError::InvalidTokenAccount
     )]
-    pub vault: Account<'info, TokenAccount>,
+    pub vault: InterfaceAccount<'info, TokenAccount>,
 
     /// Ticket to cancel (will be closed)
     #[account(
@@ -173,7 +181,7 @@ pub struct CancelTicket<'info> {
 
     /// CryptoGuy's token account (receives refund)
     #[account(mut)]
-    pub crypto_guy_token_account: Option<Account<'info, TokenAccount>>,
+    pub crypto_guy_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
 
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
 }

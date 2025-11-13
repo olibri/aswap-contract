@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{Token, TokenAccount, Mint, transfer, Transfer};
+use anchor_spl::token_interface::{TokenAccount, TokenInterface, Mint, transfer_checked, TransferChecked};
 use anchor_spl::associated_token::AssociatedToken;
 use crate::universal::state::*;
 use crate::universal::errors::UniversalOrderError;
@@ -84,13 +84,14 @@ pub fn accept_offer_and_lock(
     // Transfer tokens from CryptoGuy to vault
     let transfer_ctx = CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
-        Transfer {
+        TransferChecked {
             from: ctx.accounts.locker_token_account.to_account_info(),
             to: ctx.accounts.vault.to_account_info(),
             authority: locker.to_account_info(),
+            mint: ctx.accounts.mint.to_account_info(),
         },
     );
-    transfer(transfer_ctx, crypto_amount)?;
+    transfer_checked(transfer_ctx, crypto_amount, ctx.accounts.mint.decimals)?;
 
     // Emit event with all data
     emit!(OfferAccepted {
@@ -137,8 +138,8 @@ pub struct AcceptOfferAndLock<'info> {
     )]
     pub order: Account<'info, UniversalOrder>,
 
-    /// Crypto mint (USDC, etc.)
-    pub mint: Account<'info, Mint>,
+    /// Crypto mint (USDC, etc.) - supports both SPL Token and Token-2022
+    pub mint: InterfaceAccount<'info, Mint>,
 
     /// Vault PDA (created here, holds locked tokens)
     #[account(
@@ -147,9 +148,10 @@ pub struct AcceptOfferAndLock<'info> {
         seeds = [b"vault", order.key().as_ref()],
         bump,
         token::mint = mint,
-        token::authority = order
+        token::authority = order,
+        token::token_program = token_program
     )]
-    pub vault: Account<'info, TokenAccount>,
+    pub vault: InterfaceAccount<'info, TokenAccount>,
 
     /// New ticket PDA (created here)
     #[account(
@@ -168,9 +170,9 @@ pub struct AcceptOfferAndLock<'info> {
         constraint = locker_token_account.owner == locker.key() @ UniversalOrderError::Unauthorized,
         constraint = locker_token_account.amount >= crypto_amount @ UniversalOrderError::InsufficientBalance
     )]
-    pub locker_token_account: Account<'info, TokenAccount>,
+    pub locker_token_account: InterfaceAccount<'info, TokenAccount>,
 
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }

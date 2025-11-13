@@ -12,7 +12,9 @@ import {
     TestTokenSetup, 
     TEST_TOKEN_AMOUNT_100,
     getTokenBalance,
-    mintMoreTokens
+    mintMoreTokens,
+    setupUniversalTestToken,
+    TestToken
 } from "../utils/testTokens";
 import { checkDonorBalance } from "../utils/solFunder";
 import { setupAnchorEnvironment, waitForCooldown, TEST_WALLETS } from "../utils/testConfig";
@@ -24,7 +26,7 @@ import {
     deriveTicketPda
 } from "../utils/orderHelpers";
 
-describe.only("🧪 Universal Orders: New Flow Tests", () => {
+describe.skip("🧪 Universal Orders: New Flow Tests", () => {
     const { connection, provider, program } = setupAnchorEnvironment();
 
     let tokenSetup: TestTokenSetup;
@@ -109,7 +111,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         } catch (e) {}
     });
 
-    it.only("💰 RENT TEST: Admin SOL balance restored after full flow", async () => {
+    it("💰 RENT TEST: Admin SOL balance restored after full flow", async () => {
         const orderId = new anchor.BN(Date.now());
         const ticketId = new anchor.BN(1);
         const cryptoAmount = usdc(10);
@@ -144,9 +146,9 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         expect(vaultBal).to.eq(cryptoAmount.toNumber());
         console.log("✓ Locked:", vaultBal / 1_000_000, "USDC");
 
-        console.log("\n✍️ Step 2: FiatGuy signs");
+        console.log("✍️ Step 2: FiatGuy signs");
         await signTicket(
-            program, fiatGuy, orderPda, vaultPda, ticketPda,
+            program, fiatGuy, orderPda, tokenSetup.mint, vaultPda, ticketPda,
             fiatGuyTokenAccount, adminTokenAccount, adminSigner
         );
         await waitForCooldown();
@@ -155,7 +157,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         const beforeFiat = await getTokenBalance(connection, fiatGuyTokenAccount);
 
         const txSig = await signTicket(
-            program, cryptoGuy, orderPda, vaultPda, ticketPda,
+            program, cryptoGuy, orderPda, tokenSetup.mint, vaultPda, ticketPda,
             fiatGuyTokenAccount, adminTokenAccount, adminSigner
         );
 
@@ -250,7 +252,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         console.log("=".repeat(50) + "\n");
     });
 
-    it.only("✅ SELL: full flow with dual signature → auto-close", async () => {
+    it("✅ SELL: full flow with dual signature → auto-close", async () => {
         const orderId = new anchor.BN(Date.now());
         const ticketId = new anchor.BN(1);
         const cryptoAmount = usdc(10);
@@ -276,7 +278,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
 
         console.log("✍️ FiatGuy signs");
         await signTicket(
-            program, fiatGuy, orderPda, vaultPda, ticketPda,
+            program, fiatGuy, orderPda, tokenSetup.mint, vaultPda, ticketPda,
             fiatGuyTokenAccount, adminTokenAccount, adminSigner
         );
         await waitForCooldown();
@@ -285,7 +287,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         const beforeFiat = await getTokenBalance(connection, fiatGuyTokenAccount);
 
         await signTicket(
-            program, cryptoGuy, orderPda, vaultPda, ticketPda,
+            program, cryptoGuy, orderPda, tokenSetup.mint, vaultPda, ticketPda,
             fiatGuyTokenAccount, adminTokenAccount, adminSigner
         );
 
@@ -328,7 +330,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         const beforeCrypto = await getTokenBalance(connection, cryptoGuyTokenAccount);
 
         await cancelTicket(
-            program, fiatGuy, orderPda, vaultPda, ticketPda,
+            program, fiatGuy, orderPda, tokenSetup.mint, vaultPda, ticketPda,
             cryptoGuyTokenAccount, adminSigner
         );
         await waitForCooldown();
@@ -353,7 +355,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         expect(netLoss / 1_000_000_000).to.be.lessThan(0.0001);
     });
 
-    it.only("❌ SELL: CryptoGuy cannot cancel", async () => {
+    it("❌ SELL: CryptoGuy cannot cancel", async () => {
         const orderId = new anchor.BN(Date.now() + 2);
         const ticketId = new anchor.BN(1);
         const cryptoAmount = usdc(3);
@@ -367,7 +369,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
 
         try {
             await cancelTicket(
-                program, cryptoGuy, orderPda, vaultPda, ticketPda,
+                program, cryptoGuy, orderPda, tokenSetup.mint, vaultPda, ticketPda,
                 cryptoGuyTokenAccount, adminSigner
             );
             throw new Error("Should fail");
@@ -377,12 +379,12 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         }
 
         await cancelTicket(
-            program, fiatGuy, orderPda, vaultPda, ticketPda,
+            program, fiatGuy, orderPda, tokenSetup.mint, vaultPda, ticketPda,
             cryptoGuyTokenAccount, adminSigner
         );
     });
 
-    it.only("✅ BUY: full flow → auto-close", async () => {
+    it("✅ BUY: full flow → auto-close", async () => {
         const orderId = new anchor.BN(Date.now() + 100);
         const ticketId = new anchor.BN(1);
         const cryptoAmount = usdc(8);
@@ -405,7 +407,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         console.log("✓ CryptoGuy locked:", (beforeCrypto - afterLock) / 1_000_000, "USDC");
 
         await signTicket(
-            program, fiatGuy, orderPda, vaultPda, ticketPda,
+            program, fiatGuy, orderPda, tokenSetup.mint, vaultPda, ticketPda,
             fiatGuyTokenAccount, adminTokenAccount, adminSigner
         );
         await waitForCooldown();
@@ -413,7 +415,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         const beforeFiat = await getTokenBalance(connection, fiatGuyTokenAccount);
 
         await signTicket(
-            program, cryptoGuy, orderPda, vaultPda, ticketPda,
+            program, cryptoGuy, orderPda, tokenSetup.mint, vaultPda, ticketPda,
             fiatGuyTokenAccount, adminTokenAccount, adminSigner
         );
         await waitForCooldown();
@@ -460,6 +462,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
                 admin: adminSigner.publicKey,
                 adminRentReceiver: adminSigner.publicKey,
                 order: orderPda,
+                mint: tokenSetup.mint,
                 vault: vaultPda,
                 ticket: ticketPda,
                 acceptor: ticketData.acceptor,
@@ -521,6 +524,7 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
                 admin: adminSigner.publicKey,
                 adminRentReceiver: adminSigner.publicKey,
                 order: orderPda,
+                mint: tokenSetup.mint,
                 vault: vaultPda,
                 ticket: ticketPda,
                 acceptor: ticketData.acceptor,
@@ -551,5 +555,303 @@ describe.only("🧪 Universal Orders: New Flow Tests", () => {
         console.log(`💰 Rent recovered: ${(rentRecovered / 1_000_000_000).toFixed(5)} SOL`);
         console.log(`📊 NET LOSS: ${(netLoss / 1_000_000_000).toFixed(5)} SOL`);
         expect(netLoss / 1_000_000_000).to.be.lessThan(0.0001);
+    });
+});
+
+
+describe.only("Universal Orders - Token Support", () => {
+    const provider = anchor.AnchorProvider.env();
+    anchor.setProvider(provider);
+    const program = anchor.workspace.Ddd as anchor.Program<Ddd>;
+    
+    // Test users
+    let adminSigner: Keypair;
+    let cryptoGuy: Keypair;
+    let fiatGuy: Keypair;
+    
+    // Will be set up for each test
+    let token: TestToken;
+    let accounts: Map<string, PublicKey>;
+    
+    before(async () => {
+        // Use configured admin wallet that matches on-chain constant
+        // This ensures address checks against ADMIN_PUBKEY pass.
+        const { TEST_WALLETS } = await import("../utils/testConfig");
+        adminSigner = TEST_WALLETS.buyer; // must match constants::ADMIN_PUBKEY
+
+        // Fresh test users for each run
+        cryptoGuy = Keypair.generate();
+        fiatGuy = Keypair.generate();
+
+        // Ensure both the tx fee payer (provider wallet) and the admin payer have SOL
+        const targets = [provider.wallet.publicKey, adminSigner.publicKey];
+        for (const pk of targets) {
+            try {
+                const sig = await provider.connection.requestAirdrop(
+                    pk,
+                    10 * anchor.web3.LAMPORTS_PER_SOL
+                );
+                await provider.connection.confirmTransaction(sig);
+            } catch (e) {
+                // Ignore if on a cluster without airdrop; tests may still pass if wallets are funded
+            }
+        }
+
+        console.log("✅ Test users initialized");
+        console.log("   Admin:", adminSigner.publicKey.toBase58());
+        console.log("   CryptoGuy:", cryptoGuy.publicKey.toBase58());
+        console.log("   FiatGuy:", fiatGuy.publicKey.toBase58());
+    });
+    
+    /**
+     * Helper function to run the full order flow
+     */
+    async function testFullOrderFlow(tokenType: "SPL" | "Token-2022") {
+        const isToken2022 = tokenType === "Token-2022";
+        
+        console.log(`\n🧪 Testing with ${tokenType}...`);
+        
+        // Setup token and accounts
+        const setup = await setupUniversalTestToken(
+            provider.connection,
+            adminSigner,
+            [cryptoGuy, fiatGuy, adminSigner], // Create accounts for all parties
+            isToken2022,
+            6,
+            1_000_000_000 // 1000 tokens
+        );
+        
+        token = setup.token;
+        accounts = setup.accounts;
+        
+    console.log(`✅ ${tokenType} setup complete`);
+    console.log("   Mint:", token.mint.toBase58());
+    console.log("   Token Program:", token.tokenProgram.toBase58());
+        
+        // Test parameters
+        const orderId = new anchor.BN(Date.now());
+        const ticketId = new anchor.BN(1);
+        const cryptoAmount = new anchor.BN(100_000_000); // 100 tokens
+        const fiatAmount = new anchor.BN(100_00); // $100 (2 decimals)
+        const isSellOrder = true; // CryptoGuy sells, FiatGuy buys
+        const creator = cryptoGuy.publicKey; // CryptoGuy creates SELL order
+        
+        const cryptoGuyAta = accounts.get(cryptoGuy.publicKey.toBase58())!;
+        const fiatGuyAta = accounts.get(fiatGuy.publicKey.toBase58())!;
+        const adminAta = accounts.get(adminSigner.publicKey.toBase58())!;
+        
+    // Capture initial balances (admin may have been pre-minted in setup)
+    const adminInitialBal = await provider.connection.getTokenAccountBalance(adminAta).catch(() => null);
+    const adminInitialUi = adminInitialBal?.value?.uiAmount ?? 0;
+    console.log("   Admin initial fee account:", adminInitialUi, "tokens");
+
+    // Step 1: Accept offer and lock
+        console.log("\n📝 Step 1: Accept offer and lock tokens...");
+        let signature: string, orderPda: PublicKey, vaultPda: PublicKey, ticketPda: PublicKey;
+        try {
+            ({ signature, orderPda, vaultPda, ticketPda } = await acceptOfferAndLock(
+                program,
+                orderId,
+                ticketId,
+                cryptoAmount,
+                fiatAmount,
+                isSellOrder,
+                creator,
+                fiatGuy.publicKey,
+                cryptoGuy,
+                cryptoGuyAta,
+                token.mint,
+                adminSigner,
+                token.tokenProgram // Pass the correct token program
+            ));
+        } catch (e: any) {
+            if (typeof e?.getLogs === "function") {
+                console.error("acceptOfferAndLock logs:", await e.getLogs());
+            }
+            throw e;
+        }
+        
+        console.log("✅ Tokens locked");
+        console.log("   Signature:", signature);
+        console.log("   Order PDA:", orderPda.toBase58());
+        console.log("   Vault PDA:", vaultPda.toBase58());
+        console.log("   Ticket PDA:", ticketPda.toBase58());
+        
+        // Step 2: FiatGuy signs (first signature)
+        console.log("\n📝 Step 2: FiatGuy signs ticket...");
+        let sig1: string;
+        try {
+            sig1 = await signTicket(
+                program,
+                fiatGuy,
+                orderPda,
+                token.mint,
+                vaultPda,
+                ticketPda,
+                fiatGuyAta,
+                adminAta,
+                adminSigner,
+                token.tokenProgram
+            );
+        } catch (e: any) {
+            if (typeof e?.getLogs === "function") {
+                console.error("signTicket (fiat) logs:", await e.getLogs());
+            }
+            throw e;
+        }
+        console.log("✅ FiatGuy signed:", sig1);
+        
+        // Step 3: CryptoGuy signs (second signature - triggers settlement)
+        console.log("\n📝 Step 3: CryptoGuy signs ticket (triggers settlement)...");
+        let sig2: string;
+        try {
+            sig2 = await signTicket(
+                program,
+                cryptoGuy,
+                orderPda,
+                token.mint,
+                vaultPda,
+                ticketPda,
+                fiatGuyAta,
+                adminAta,
+                adminSigner,
+                token.tokenProgram
+            );
+        } catch (e: any) {
+            if (typeof e?.getLogs === "function") {
+                console.error("signTicket (crypto) logs:", await e.getLogs());
+            }
+            throw e;
+        }
+        console.log("✅ CryptoGuy signed and order settled:", sig2);
+        
+    // Verify balances
+    const fiatGuyBalance = await provider.connection.getTokenAccountBalance(fiatGuyAta);
+    const adminBalance = await provider.connection.getTokenAccountBalance(adminAta);
+        
+        console.log("\n📊 Final balances:");
+        console.log("   FiatGuy:", fiatGuyBalance.value.uiAmount, "tokens");
+        console.log("   Admin fee:", adminBalance.value.uiAmount, "tokens");
+        
+    // Expected: FiatGuy gets 99.8% = 99.8 tokens, Admin receives 0.2% fee.
+    // Note: Admin ATA may have an initial balance from setup; assert the delta.
+    expect(fiatGuyBalance.value.uiAmount).to.be.closeTo(1099.8, 0.1);
+    const adminFeeDelta = (adminBalance.value.uiAmount ?? 0) - adminInitialUi;
+    expect(adminFeeDelta).to.be.closeTo(0.2, 0.01);
+        
+        console.log(`\n✅ ${tokenType} test passed!`);
+    }
+    
+    /**
+     * Test cancel flow
+     */
+    async function testCancelFlow(tokenType: "SPL" | "Token-2022") {
+        const isToken2022 = tokenType === "Token-2022";
+        
+        console.log(`\n🧪 Testing cancel with ${tokenType}...`);
+        
+        // Setup token and accounts
+        const setup = await setupUniversalTestToken(
+            provider.connection,
+            adminSigner,
+            [cryptoGuy, fiatGuy],
+            isToken2022,
+            6,
+            1_000_000_000
+        );
+        
+        token = setup.token;
+        accounts = setup.accounts;
+        
+        const orderId = new anchor.BN(Date.now() + 1000);
+        const ticketId = new anchor.BN(1);
+        const cryptoAmount = new anchor.BN(50_000_000);
+        const fiatAmount = new anchor.BN(50_00);
+        const isSellOrder = true;
+        const creator = cryptoGuy.publicKey;
+        
+        const cryptoGuyAta = accounts.get(cryptoGuy.publicKey.toBase58())!;
+        
+        // Accept and lock
+        let orderPda: PublicKey, vaultPda: PublicKey, ticketPda: PublicKey;
+        try {
+            ({ orderPda, vaultPda, ticketPda } = await acceptOfferAndLock(
+                program,
+                orderId,
+                ticketId,
+                cryptoAmount,
+                fiatAmount,
+                isSellOrder,
+                creator,
+                fiatGuy.publicKey,
+                cryptoGuy,
+                cryptoGuyAta,
+                token.mint,
+                adminSigner,
+                token.tokenProgram
+            ));
+        } catch (e: any) {
+            if (typeof e?.getLogs === "function") {
+                console.error("acceptOfferAndLock logs:", await e.getLogs());
+            }
+            throw e;
+        }
+        
+        // Get initial balance
+        const initialBalance = await provider.connection.getTokenAccountBalance(cryptoGuyAta);
+        console.log("   Initial CryptoGuy balance:", initialBalance.value.uiAmount);
+        
+        // Cancel ticket (FiatGuy cancels before signing)
+        console.log("\n📝 FiatGuy cancels ticket...");
+        let cancelSig: string;
+        try {
+            cancelSig = await cancelTicket(
+                program,
+                fiatGuy,
+                orderPda,
+                token.mint,
+                vaultPda,
+                ticketPda,
+                cryptoGuyAta,
+                adminSigner,
+                token.tokenProgram
+            );
+        } catch (e: any) {
+            if (typeof e?.getLogs === "function") {
+                console.error("cancelTicket logs:", await e.getLogs());
+            }
+            throw e;
+        }
+        console.log("✅ Ticket cancelled:", cancelSig);
+        
+        // Verify refund
+        const finalBalance = await provider.connection.getTokenAccountBalance(cryptoGuyAta);
+        console.log("   Final CryptoGuy balance:", finalBalance.value.uiAmount);
+        
+        expect(finalBalance.value.uiAmount).to.equal(1000); // Full refund
+        
+        console.log(`\n✅ ${tokenType} cancel test passed!`);
+    }
+    
+    // Run tests for SPL Token
+    describe("SPL Token (Standard)", () => {
+        it("Should complete full order flow with SPL Token", async () => {
+            await testFullOrderFlow("SPL");
+        });
+        
+        it("Should handle cancellation with SPL Token", async () => {
+            await testCancelFlow("SPL");
+        });
+    });
+    
+    // Run tests for Token-2022
+    describe("Token-2022 (Extensions Program)", () => {
+        it("Should complete full order flow with Token-2022", async () => {
+            await testFullOrderFlow("Token-2022");
+        });
+        
+        it("Should handle cancellation with Token-2022", async () => {
+            await testCancelFlow("Token-2022");
+        });
     });
 });

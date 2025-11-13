@@ -20,6 +20,7 @@ idl-build = [
 ]
 
 [dependencies]
-anchor-lang = "0.31.0"
-anchor-spl = "=0.31.0"
+anchor-lang = "0.32.1"
+anchor-spl = "0.32.1"
+
 

@@ -6,22 +6,22 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-ddd = "RVCEK6tHXkRgLFwK2oYyPyvT3nHcZ5CaFzTKCn96WCe"
+ddd = "6u3xMGTW2fuebhGRSSPVP8QuzdAeu4gk9Jh4E24nJM4p"
 
 [programs.mainnet]
-ddd = "2sy9dsjm6fsqeMEL49FWJkXz5eavc5qaHD1xyactQuP5"
+ddd = "6u3xMGTW2fuebhGRSSPVP8QuzdAeu4gk9Jh4E24nJM4p"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-# cluster = "https://devnet.helius-rpc.com/?api-key=839f7b0a-bc48-48cd-9d38-acd8c0307e90"
-# ws =      "wss://devnet.helius-rpc.com/?api-key=839f7b0a-bc48-48cd-9d38-acd8c0307e90"
+cluster = "https://devnet.helius-rpc.com/?api-key=839f7b0a-bc48-48cd-9d38-acd8c0307e90"
+ws =      "wss://devnet.helius-rpc.com/?api-key=839f7b0a-bc48-48cd-9d38-acd8c0307e90"
 # cluster = "https://frosty-little-aura.solana-devnet.quiknode.pro/"
 # ws =      "wss://frosty-little-aura.solana-devnet.quiknode.pro/"
 
-cluster = "https://mainnet.helius-rpc.com/?api-key=58411f79-a912-4b5c-850a-35be0baefa71"
-ws =      "wss://mainnet.helius-rpc.com/?api-key=58411f79-a912-4b5c-850a-35be0baefa71"
+# cluster = "https://mainnet.helius-rpc.com/?api-key=58411f79-a912-4b5c-850a-35be0baefa71"
+# ws =      "wss://mainnet.helius-rpc.com/?api-key=58411f79-a912-4b5c-850a-35be0baefa71"
 wallet = "~/.config/solana/mainnet-deployer.json"
 
 

@@ -18,9 +18,13 @@ import {
     createAssociatedTokenAccountInstruction,
     getAccount,
     TOKEN_PROGRAM_ID,
+    TOKEN_2022_PROGRAM_ID,
     MINT_SIZE,
     createInitializeMintInstruction,
     getMinimumBalanceForRentExemptMint,
+    getMintLen,
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+    createMintToInstruction,
 } from "@solana/spl-token";
 
 // Завантажуємо змінні середовища з .env файлу
@@ -236,3 +240,223 @@ async function sleep(ms: number): Promise<void> {
 // Експортуємо також константи для зручності
 export const TEST_TOKEN_DECIMALS = parseInt(process.env.TOKEN_DECIMALS!);
 export const TEST_TOKEN_AMOUNT_1 = 1_000_000;      // 1 токен (залишаємо статичним)
+
+/**
+ * ===== TOKEN-2022 SUPPORT =====
+ */
+
+export interface TestToken {
+    mint: PublicKey;
+    mintAuthority: Keypair;
+    decimals: number;
+    tokenProgram: PublicKey;
+    isToken2022: boolean;
+}
+
+/**
+ * Створює Token-2022 для тестування
+ */
+export async function createToken2022(
+    connection: Connection,
+    payer: Keypair,
+    decimals: number = 6
+): Promise<TestToken> {
+    console.log("🔧 Creating Token-2022...");
+    
+    const mintAuthority = Keypair.generate();
+    const mintKeypair = Keypair.generate();
+    
+    const lamports = await connection.getMinimumBalanceForRentExemption(
+        getMintLen([])
+    );
+
+    const transaction = new Transaction().add(
+        SystemProgram.createAccount({
+            fromPubkey: payer.publicKey,
+            newAccountPubkey: mintKeypair.publicKey,
+            space: getMintLen([]),
+            lamports,
+            programId: TOKEN_2022_PROGRAM_ID,
+        }),
+        createInitializeMintInstruction(
+            mintKeypair.publicKey,
+            decimals,
+            mintAuthority.publicKey,
+            null,
+            TOKEN_2022_PROGRAM_ID
+        )
+    );
+
+    await connection.sendTransaction(transaction, [payer, mintKeypair]);
+    await sleep(1000);
+
+    console.log("✅ Token-2022 created:");
+    console.log("   Mint:", mintKeypair.publicKey.toBase58());
+    console.log("   Authority:", mintAuthority.publicKey.toBase58());
+    
+    return {
+        mint: mintKeypair.publicKey,
+        mintAuthority,
+        decimals,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+        isToken2022: true,
+    };
+}
+
+/**
+ * Wrapper для створення SPL Token з однаковим інтерфейсом
+ */
+export async function createSPLTokenWithMetadata(
+    connection: Connection,
+    payer: Keypair,
+    decimals: number = 6
+): Promise<TestToken> {
+    console.log("🔧 Creating SPL Token...");
+    
+    const mintAuthority = Keypair.generate();
+    
+    const mint = await createMint(
+        connection,
+        payer,
+        mintAuthority.publicKey,
+        null,
+        decimals,
+        undefined,
+        undefined,
+        TOKEN_PROGRAM_ID
+    );
+    
+    console.log("✅ SPL Token created:");
+    console.log("   Mint:", mint.toBase58());
+    console.log("   Authority:", mintAuthority.publicKey.toBase58());
+    
+    return {
+        mint,
+        mintAuthority,
+        decimals,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        isToken2022: false,
+    };
+}
+
+/**
+ * Створює токен акаунт для обох типів токенів
+ */
+export async function createUniversalTokenAccount(
+    connection: Connection,
+    payer: Keypair,
+    mint: PublicKey,
+    owner: PublicKey,
+    tokenProgram: PublicKey
+): Promise<PublicKey> {
+    const ata = await getAssociatedTokenAddress(
+        mint,
+        owner,
+        false,
+        tokenProgram,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+
+    const accountInfo = await connection.getAccountInfo(ata);
+    
+    if (!accountInfo) {
+        const transaction = new Transaction().add(
+            createAssociatedTokenAccountInstruction(
+                payer.publicKey,
+                ata,
+                owner,
+                mint,
+                tokenProgram,
+                ASSOCIATED_TOKEN_PROGRAM_ID
+            )
+        );
+
+        await connection.sendTransaction(transaction, [payer]);
+        await sleep(1000);
+        console.log(`✅ Token account created: ${ata.toBase58()}`);
+    }
+
+    return ata;
+}
+
+/**
+ * Mint токени для обох типів
+ */
+export async function mintUniversalTokens(
+    connection: Connection,
+    payer: Keypair,
+    mint: PublicKey,
+    destination: PublicKey,
+    mintAuthority: Keypair,
+    amount: number | bigint,
+    tokenProgram: PublicKey
+): Promise<void> {
+    const transaction = new Transaction().add(
+        createMintToInstruction(
+            mint,
+            destination,
+            mintAuthority.publicKey,
+            amount,
+            [],
+            tokenProgram
+        )
+    );
+
+    await connection.sendTransaction(transaction, [payer, mintAuthority]);
+    await sleep(500);
+}
+
+/**
+ * Повна настройка тестового токена (SPL або Token-2022) з користувачами
+ */
+export async function setupUniversalTestToken(
+    connection: Connection,
+    payer: Keypair,
+    users: Keypair[],
+    isToken2022: boolean = false,
+    decimals: number = 6,
+    initialBalance: number = 1_000_000_000
+): Promise<{
+    token: TestToken;
+    accounts: Map<string, PublicKey>;
+}> {
+    console.log(`🚀 Setting up ${isToken2022 ? 'Token-2022' : 'SPL Token'} environment...`);
+    
+    // Створюємо токен
+    const token = isToken2022
+        ? await createToken2022(connection, payer, decimals)
+        : await createSPLTokenWithMetadata(connection, payer, decimals);
+
+    // Створюємо акаунти для всіх користувачів
+    const accounts = new Map<string, PublicKey>();
+    
+    for (const user of users) {
+        const ata = await createUniversalTokenAccount(
+            connection,
+            payer,
+            token.mint,
+            user.publicKey,
+            token.tokenProgram
+        );
+        
+        // Mint початковий баланс
+        await mintUniversalTokens(
+            connection,
+            payer,
+            token.mint,
+            ata,
+            token.mintAuthority,
+            initialBalance,
+            token.tokenProgram
+        );
+        
+        accounts.set(user.publicKey.toBase58(), ata);
+    }
+
+    console.log(`✅ Test token setup complete!`);
+    console.log(`   Type: ${isToken2022 ? 'Token-2022' : 'SPL Token'}`);
+    console.log(`   Mint: ${token.mint.toBase58()}`);
+    console.log(`   Users: ${users.length}`);
+    
+    return { token, accounts };
+}

@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_lang::prelude::AccountsClose; // for account close
-use anchor_spl::token::{Token, TokenAccount, Transfer, transfer};
+use anchor_spl::token_interface::{TokenAccount, TokenInterface, Mint, transfer_checked, TransferChecked, close_account, CloseAccount};
 use crate::universal::state::*;
 use crate::universal::errors::UniversalOrderError;
 use crate::universal::utils::fees::calculate_fee;
@@ -49,6 +49,9 @@ pub fn admin_resolve_ticket(
 
         // Calculate 0.25% fee
         let (fee_amount, net_amount) = calculate_fee(amount)?;
+        
+        // Get mint decimals
+        let decimals = ctx.accounts.mint.decimals;
 
         let seeds = &[
             b"universal_order",
@@ -62,26 +65,28 @@ pub fn admin_resolve_ticket(
         // Transfer 1: 99.75% to FiatGuy
         let cpi = CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
-            Transfer {
+            TransferChecked {
                 from: ctx.accounts.vault.to_account_info(),
                 to: fiat_ata.to_account_info(),
                 authority: ctx.accounts.order.to_account_info(),
+                mint: ctx.accounts.mint.to_account_info(),
             },
             signer,
         );
-        transfer(cpi, net_amount)?;
+        transfer_checked(cpi, net_amount, decimals)?;
 
         // Transfer 2: 0.25% to Admin (fee)
         let fee_cpi = CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
-            Transfer {
+            TransferChecked {
                 from: ctx.accounts.vault.to_account_info(),
                 to: admin_fee_account.to_account_info(),
                 authority: ctx.accounts.order.to_account_info(),
+                mint: ctx.accounts.mint.to_account_info(),
             },
             signer,
         );
-        transfer(fee_cpi, fee_amount)?;
+        transfer_checked(fee_cpi, fee_amount, decimals)?;
 
         {
             let order = &mut ctx.accounts.order;
@@ -117,7 +122,7 @@ pub fn admin_resolve_ticket(
                 ];
                 let signer = &[&seeds[..]];
 
-                let close_vault_accounts = anchor_spl::token::CloseAccount {
+                let close_vault_accounts = CloseAccount {
                     account: ctx.accounts.vault.to_account_info(),
                     destination: ctx.accounts.admin_rent_receiver.to_account_info(),
                     authority: ctx.accounts.order.to_account_info(),
@@ -129,7 +134,7 @@ pub fn admin_resolve_ticket(
                     signer,
                 );
 
-                anchor_spl::token::close_account(cpi_ctx)?;
+                close_account(cpi_ctx)?;
                 msg!("Vault closed");
 
                 ctx.accounts.order.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
@@ -152,6 +157,9 @@ pub fn admin_resolve_ticket(
                 .ok_or(UniversalOrderError::TokenAccountRequired)?;
             require!(creator_ata.mint == order_mint, UniversalOrderError::InvalidTokenAccount);
             require!(creator_ata.owner == crypto_guy, UniversalOrderError::Unauthorized);
+            
+            // Get mint decimals
+            let decimals = ctx.accounts.mint.decimals;
 
             let seeds = &[
                 b"universal_order",
@@ -164,14 +172,15 @@ pub fn admin_resolve_ticket(
 
             let cpi = CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
-                Transfer {
+                TransferChecked {
                     from: ctx.accounts.vault.to_account_info(),
                     to: creator_ata.to_account_info(),
                     authority: ctx.accounts.order.to_account_info(),
+                    mint: ctx.accounts.mint.to_account_info(),
                 },
                 signer,
             );
-            transfer(cpi, amount)?;
+            transfer_checked(cpi, amount, decimals)?;
             // Reduce target to reflect refund out of the order
             {
                 let order = &mut ctx.accounts.order;
@@ -202,7 +211,7 @@ pub fn admin_resolve_ticket(
                 ];
                 let signer = &[&seeds[..]];
 
-                let close_vault_accounts = anchor_spl::token::CloseAccount {
+                let close_vault_accounts = CloseAccount {
                     account: ctx.accounts.vault.to_account_info(),
                     destination: ctx.accounts.admin_rent_receiver.to_account_info(),
                     authority: ctx.accounts.order.to_account_info(),
@@ -214,7 +223,7 @@ pub fn admin_resolve_ticket(
                     signer,
                 );
 
-                anchor_spl::token::close_account(cpi_ctx)?;
+                close_account(cpi_ctx)?;
                 msg!("Vault closed");
 
                 ctx.accounts.order.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
@@ -234,6 +243,9 @@ pub fn admin_resolve_ticket(
                 .ok_or(UniversalOrderError::TokenAccountRequired)?;
             require!(acceptor_ata.mint == order_mint, UniversalOrderError::InvalidTokenAccount);
             require!(acceptor_ata.owner == crypto_guy, UniversalOrderError::Unauthorized);
+            
+            // Get mint decimals
+            let decimals = ctx.accounts.mint.decimals;
 
             let seeds = &[
                 b"universal_order",
@@ -246,14 +258,15 @@ pub fn admin_resolve_ticket(
 
             let cpi = CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
-                Transfer {
+                TransferChecked {
                     from: ctx.accounts.vault.to_account_info(),
                     to: acceptor_ata.to_account_info(),
                     authority: ctx.accounts.order.to_account_info(),
+                    mint: ctx.accounts.mint.to_account_info(),
                 },
                 signer,
             );
-            transfer(cpi, amount)?;
+            transfer_checked(cpi, amount, decimals)?;
             {
                 let order = &mut ctx.accounts.order;
                 order.reserved_amount = order.reserved_amount.saturating_sub(amount);
@@ -282,7 +295,7 @@ pub fn admin_resolve_ticket(
                 ];
                 let signer = &[&seeds[..]];
 
-                let close_vault_accounts = anchor_spl::token::CloseAccount {
+                let close_vault_accounts = CloseAccount {
                     account: ctx.accounts.vault.to_account_info(),
                     destination: ctx.accounts.admin_rent_receiver.to_account_info(),
                     authority: ctx.accounts.order.to_account_info(),
@@ -294,7 +307,7 @@ pub fn admin_resolve_ticket(
                     signer,
                 );
 
-                anchor_spl::token::close_account(cpi_ctx)?;
+                close_account(cpi_ctx)?;
                 msg!("Vault closed");
 
                 ctx.accounts.order.close(ctx.accounts.admin_rent_receiver.to_account_info())?;
@@ -333,15 +346,19 @@ pub struct AdminResolveTicket<'info> {
         bump = order.bump
     )]
     pub order: Account<'info, UniversalOrder>,
+    
+    /// Mint account - needed for transfer_checked
+    pub mint: InterfaceAccount<'info, Mint>,
 
-    /// Vault PDA
+    /// Vault PDA - supports both SPL Token and Token-2022
     #[account(
         mut,
         seeds = [b"vault", order.key().as_ref()],
         bump,
-        constraint = vault.mint == order.crypto_mint
+        constraint = vault.mint == order.crypto_mint @ UniversalOrderError::InvalidTokenAccount,
+        constraint = vault.mint == mint.key() @ UniversalOrderError::InvalidTokenAccount
     )]
-    pub vault: Account<'info, TokenAccount>,
+    pub vault: InterfaceAccount<'info, TokenAccount>,
 
     /// Ticket PDA to resolve
     #[account(
@@ -353,13 +370,13 @@ pub struct AdminResolveTicket<'info> {
 
     /// Optional ATAs for the payout/refund direction
     #[account(mut)]
-    pub fiat_guy_token_account: Option<Account<'info, TokenAccount>>,
+    pub fiat_guy_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
     #[account(mut)]
-    pub crypto_guy_token_account: Option<Account<'info, TokenAccount>>,
+    pub crypto_guy_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
 
     /// Admin's token account (for 0.25% fee on payouts only)
     #[account(mut)]
-    pub admin_fee_account: Option<Account<'info, TokenAccount>>,
+    pub admin_fee_account: Option<InterfaceAccount<'info, TokenAccount>>,
 
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
 }

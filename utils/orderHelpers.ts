@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { PublicKey, Keypair, SystemProgram } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { Ddd } from "../target/types/ddd";
 
 /**
@@ -19,6 +19,7 @@ import { Ddd } from "../target/types/ddd";
  * @param cryptoGuyAta - CryptoGuy's token account
  * @param mint - Token mint (USDC, etc.)
  * @param adminSigner - Admin keypair (pays rent)
+ * @param tokenProgram - Token program ID (SPL Token or Token-2022)
  * @returns Transaction signature
  */
 export async function acceptOfferAndLock(
@@ -33,7 +34,8 @@ export async function acceptOfferAndLock(
     cryptoGuy: Keypair,
     cryptoGuyAta: PublicKey,
     mint: PublicKey,
-    adminSigner: Keypair
+    adminSigner: Keypair,
+    tokenProgram: PublicKey = TOKEN_PROGRAM_ID
 ): Promise<{ signature: string; orderPda: PublicKey; vaultPda: PublicKey; ticketPda: PublicKey }> {
     // Derive PDAs
     const orderIdBuf = orderId.toArrayLike(Buffer, "le", 8);
@@ -69,7 +71,7 @@ export async function acceptOfferAndLock(
             vault: vaultPda,
             ticket: ticketPda,
             lockerTokenAccount: cryptoGuyAta,
-            tokenProgram: TOKEN_PROGRAM_ID,
+            tokenProgram: tokenProgram,
             associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
             systemProgram: SystemProgram.programId,
         })
@@ -88,22 +90,26 @@ export async function acceptOfferAndLock(
  * @param program - Anchor program instance
  * @param signer - Party signing the ticket
  * @param orderPda - Order PDA
+ * @param mint - Token mint
  * @param vaultPda - Vault PDA
  * @param ticketPda - Ticket PDA
  * @param fiatGuyAta - FiatGuy's token account (receives crypto)
  * @param adminTokenAccount - Admin's token account (receives fee)
  * @param adminSigner - Admin keypair (pays transaction fee)
+ * @param tokenProgram - Token program ID (SPL Token or Token-2022)
  * @returns Transaction signature
  */
 export async function signTicket(
     program: anchor.Program<Ddd>,
     signer: Keypair,
     orderPda: PublicKey,
+    mint: PublicKey,
     vaultPda: PublicKey,
     ticketPda: PublicKey,
     fiatGuyAta: PublicKey,
     adminTokenAccount: PublicKey,
-    adminSigner: Keypair
+    adminSigner: Keypair,
+    tokenProgram: PublicKey = TOKEN_PROGRAM_ID
 ): Promise<string> {
     return await (program.methods as any)
         .signUniversalTicket()
@@ -112,11 +118,12 @@ export async function signTicket(
             signer: signer.publicKey,
             adminRentReceiver: adminSigner.publicKey,
             order: orderPda,
+            mint: mint,
             vault: vaultPda,
             ticket: ticketPda,
             fiatGuyTokenAccount: fiatGuyAta,
             adminFeeAccount: adminTokenAccount,
-            tokenProgram: TOKEN_PROGRAM_ID,
+            tokenProgram: tokenProgram,
         })
         .signers([adminSigner, signer])
         .rpc();
@@ -129,20 +136,24 @@ export async function signTicket(
  * @param program - Anchor program instance
  * @param canceller - FiatGuy (only they can cancel)
  * @param orderPda - Order PDA
+ * @param mint - Token mint
  * @param vaultPda - Vault PDA
  * @param ticketPda - Ticket PDA
  * @param cryptoGuyAta - CryptoGuy's token account (receives refund)
  * @param adminSigner - Admin keypair (pays transaction fee)
+ * @param tokenProgram - Token program ID (SPL Token or Token-2022)
  * @returns Transaction signature
  */
 export async function cancelTicket(
     program: anchor.Program<Ddd>,
     canceller: Keypair,
     orderPda: PublicKey,
+    mint: PublicKey,
     vaultPda: PublicKey,
     ticketPda: PublicKey,
     cryptoGuyAta: PublicKey,
-    adminSigner: Keypair
+    adminSigner: Keypair,
+    tokenProgram: PublicKey = TOKEN_PROGRAM_ID
 ): Promise<string> {
     return await (program.methods as any)
         .cancelUniversalTicket()
@@ -151,10 +162,11 @@ export async function cancelTicket(
             canceller: canceller.publicKey,
             adminRentReceiver: adminSigner.publicKey,
             order: orderPda,
+            mint: mint,
             vault: vaultPda,
             ticket: ticketPda,
             cryptoGuyTokenAccount: cryptoGuyAta,
-            tokenProgram: TOKEN_PROGRAM_ID,
+            tokenProgram: tokenProgram,
         })
         .signers([adminSigner, canceller])
         .rpc();
